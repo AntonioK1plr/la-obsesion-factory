@@ -122,7 +122,139 @@ class VentaController extends Controller
 
     public function update(Request $request, Venta $venta)
     {
-        // Similar al store pero con actualización
-        // Implementar según necesidades
+       // Validación similar al store pero con algunas modificaciones
+    $validated = $request->validate([
+        'cliente_id' => 'nullable|exists:clientes,id',
+        'fecha_venta' => 'required|date',
+        'observaciones' => 'nullable|string',
+        'estado' => 'required|in:completada,pendiente,cancelada',
+        'productos' => 'sometimes|array',
+        'productos.*.producto_id' => 'required_with:productos|exists:productos,id',
+        'productos.*.cantidad' => 'required_with:productos|integer|min:1',
+        'productos.*.precio_unitario' => 'required_with:productos|numeric|min:0',
+        'servicios' => 'sometimes|array',
+        'servicios.*.servicio_id' => 'required_with:servicios|exists:servicios,id',
+        'servicios.*.costo' => 'required_with:servicios|numeric|min:0',
+        'eliminar_detalles' => 'nullable|string',
+        'eliminar_servicios' => 'nullable|string',
+        'total' => 'required|numeric|min:0',
+    ]);
+
+    // Calcular totales (similar al store)
+    $subtotalProductos = 0;
+    $subtotalServicios = 0;
+
+    // Procesar productos
+    if (isset($validated['productos'])) {
+        foreach ($validated['productos'] as $item) {
+            $subtotalProductos += $item['cantidad'] * $item['precio_unitario'];
+        }
+    }
+
+    // Procesar servicios
+    if (isset($validated['servicios'])) {
+        foreach ($validated['servicios'] as $item) {
+            $subtotalServicios += $item['costo'];
+        }
+    }
+
+    $subtotal = $subtotalProductos + $subtotalServicios;
+    $iva = $subtotal * 0.16;
+    $total = $subtotal + $iva;
+
+    // Actualizar venta
+    $venta->update([
+        'cliente_id' => $validated['cliente_id'] ?? null,
+        'fecha_venta' => $validated['fecha_venta'],
+        'subtotal' => $subtotal,
+        'iva' => $iva,
+        'total' => $total,
+        'observaciones' => $validated['observaciones'] ?? null,
+        'estado' => $validated['estado'],
+    ]);
+
+    // Eliminar detalles si se solicita
+    if ($request->filled('eliminar_detalles')) {
+        $detallesIds = explode(',', $request->eliminar_detalles);
+        foreach ($detallesIds as $detalleId) {
+            if ($detalleId) {
+                $detalle = DetalleVenta::find($detalleId);
+                if ($detalle && $detalle->venta_id == $venta->id) {
+                    // Restaurar stock
+                    $producto = $detalle->producto;
+                    $producto->stock += $detalle->cantidad;
+                    $producto->save();
+                    
+                    $detalle->delete();
+                }
+            }
+        }
+    }
+
+    // Eliminar servicios si se solicita
+    if ($request->filled('eliminar_servicios')) {
+        $serviciosIds = explode(',', $request->eliminar_servicios);
+        $venta->servicios()->detach($serviciosIds);
+    }
+
+    // Actualizar o crear detalles de productos
+    if (isset($validated['productos'])) {
+        foreach ($validated['productos'] as $index => $item) {
+            // Verificar si es un detalle existente (índice bajo) o nuevo
+            if ($index < $venta->detalles->count()) {
+                // Actualizar detalle existente
+                $detalle = $venta->detalles[$index];
+                $diferenciaCantidad = $item['cantidad'] - $detalle->cantidad;
+                
+                // Actualizar stock del producto
+                $producto = Producto::find($item['producto_id']);
+                if ($producto) {
+                    $producto->stock -= $diferenciaCantidad;
+                    if ($producto->stock < 0) $producto->stock = 0;
+                    $producto->save();
+                }
+                
+                $detalle->update([
+                    'producto_id' => $item['producto_id'],
+                    'cantidad' => $item['cantidad'],
+                    'precio_unitario' => $item['precio_unitario'],
+                    'subtotal' => $item['cantidad'] * $item['precio_unitario'],
+                ]);
+            } else {
+                // Crear nuevo detalle
+                DetalleVenta::create([
+                    'venta_id' => $venta->id,
+                    'producto_id' => $item['producto_id'],
+                    'cantidad' => $item['cantidad'],
+                    'precio_unitario' => $item['precio_unitario'],
+                    'subtotal' => $item['cantidad'] * $item['precio_unitario'],
+                ]);
+
+                // Actualizar stock del producto
+                $producto = Producto::find($item['producto_id']);
+                if ($producto->stock >= $item['cantidad']) {
+                    $producto->stock -= $item['cantidad'];
+                    $producto->save();
+                }
+            }
+        }
+    }
+
+    // Actualizar o crear servicios
+    if (isset($validated['servicios'])) {
+        foreach ($validated['servicios'] as $index => $item) {
+            // Para simplificar, eliminamos y volvemos a agregar
+            $venta->servicios()->sync([]);
+            
+            foreach ($validated['servicios'] as $servicioItem) {
+                $venta->servicios()->attach($servicioItem['servicio_id'], [
+                    'costo' => $servicioItem['costo']
+                ]);
+            }
+        }
+    }
+
+    return redirect()->route('ventas.show', $venta)
+        ->with('success', 'Venta actualizada exitosamente.');
     }
 }
