@@ -9,13 +9,7 @@ return new class extends Migration
     /**
      * Run the migrations.
      */
-    public function up(): void
-    {
-        Schema::create('detalle_ventas', function (Blueprint $table) {
-            $table->id();
-            $table->timestamps();
-        });
-    }
+    
 
     /**
      * Reverse the migrations.

@@ -3,8 +3,14 @@
 namespace Database\Seeders;
 
 use App\Models\User;
-use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
+use Illuminate\Database\Console\Seeds\WithoutModelEvents;
+use Database\Seeders\ProductSeeder;
+use Database\Seeders\ServiceSeeder;
+use Database\Seeders\ClientSeeder;
+use Database\Seeders\VentasSeeder;
+use Database\Seeders\ComprasSeeder;
+
 
 class DatabaseSeeder extends Seeder
 {
@@ -15,7 +21,16 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        // User::factory(10)->create();
+        $this->call([
+            ProductSeeder::class,
+            ServiceSeeder::class,
+            ClientSeeder::class,
+            VentasSeeder::class,
+            ComprasSeeder::class,
+
+
+
+        ]);
 
         User::factory()->create([
             'name' => 'Test User',

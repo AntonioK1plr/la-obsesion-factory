@@ -14,6 +14,7 @@ return new class extends Migration
             $table->text('descripcion');
             $table->decimal('costo', 10, 2);
             $table->integer('tiempo_estimado');
+            $table->text('requisitos')->nullable();
             $table->string('categoria')->nullable();
             $table->timestamps();
         });
